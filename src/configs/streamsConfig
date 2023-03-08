@@ -1,0 +1,6 @@
+application.id=streams
+boostrap.servers=cluster:9092
+zookeeper.connect=cluster:2181
+default.value.serde=org.apache.kafka.common.serialization.Serdes$StringSerde
+default.key.serde=org.apache.kafka.common.serialization.Serdes$IntegerSerde
+
