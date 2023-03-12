@@ -1,0 +1,7 @@
+bootstrap.servers=cluster:9092
+key.serializer=org.apache.kafka.commmon.serialization.StringSerializer
+value.serializer=org.apache.kafka.common.serialization.StringSerializer
+client.id=sampleproducer
+compression.type=none
+acks=1
+linger.ms=5

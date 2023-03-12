@@ -1,3 +1,2 @@
-com/confluent/checkride/Producer.class
 com/confluent/checkride/Streams.class
-com/confluent/checkride/App.class
+com/confluent/checkride/Data.class
