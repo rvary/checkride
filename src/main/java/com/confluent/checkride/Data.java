@@ -8,7 +8,7 @@ import org.json.*;
 
 public class Data 
 {
-    private final String APIKEY =  "24504a2e81mshf042095f717ca5ep18a711jsn6ff0c8537493";
+    private String APIKEY = "";
     private final String HOST = "twelve-data1.p.rapidapi.com";
     private int APITHROTTLING = 0, RETURNS = 0, APICOUNT = 0;
     private boolean LOG = true;
@@ -50,6 +50,9 @@ public class Data
                 names.add(data);
                 data = br.readLine();
             }
+            br.close();
+            br = new BufferedReader(new FileReader(System.getProperty("user.dir") + "key"));
+            APIKEY = br.readLine();
             br.close();
             if(LOG){
                 fw = new FileWriter(new File("log.txt"), false);
