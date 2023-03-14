@@ -1,6 +1,8 @@
 package com.confluent.checkride;
 import java.io.*;
 import java.net.http.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.net.URI;
 import java.util.*;
 
@@ -10,6 +12,7 @@ public class Data
 {
     private String APIKEY = "";
     private final String HOST = "twelve-data1.p.rapidapi.com";
+    private final String USERDIR = System.getProperty("user.dir");
     private int APITHROTTLING = 0, RETURNS = 0, APICOUNT = 0;
     private boolean LOG = true;
     private FileWriter fw;
@@ -45,23 +48,23 @@ public class Data
         names = new ArrayList<>();
         String data;
         try{
-            BufferedReader br = new BufferedReader(new FileReader(System.getProperty("user.dir") + "/data/names.csv"));
+            BufferedReader br = new BufferedReader(new FileReader(USERDIR + "/data/names.csv"));
             while((data = br.readLine()) != null){
                 names.add(data);
                 data = br.readLine();
             }
             br.close();
-            br = new BufferedReader(new FileReader(System.getProperty("user.dir") + "key"));
-            APIKEY = br.readLine();
-            br.close();
             if(LOG){
                 fw = new FileWriter(new File("log.txt"), false);
             }
             if(update){
+                br = new BufferedReader(new FileReader(USERDIR + "key"));
+                APIKEY = br.readLine();
+                br.close();
                 writeStocksToDisk("stocks.json", getStocks());
                 writeStocksToDisk("midLargeCap.json", getMidtoLargeCapStocks());
             }
-            else{
+            {
                 nasdaq = dataRead("stocks.json");
                 midLargeCap = dataRead("midLargeCap.json");
             }
@@ -92,7 +95,7 @@ public class Data
         getStockPrices();
         return nasdaq;
     }
-    public void getStockPrices() throws IOException, InterruptedException {
+    private void getStockPrices() throws IOException, InterruptedException {
         String stock;
         HttpResponse<String> response = null;
         JSONObject raw = null;
@@ -141,7 +144,7 @@ public class Data
             fw.flush();
         }
     }
-    public TreeMap<String,Stock> getMidtoLargeCapStocks() throws IOException {
+    private TreeMap<String,Stock> getMidtoLargeCapStocks() throws IOException {
         String line;
         String[] data;
         TreeMap<String,Stock> stocks = new TreeMap<>();
@@ -158,7 +161,7 @@ public class Data
 
         return stocks;
     }
-    public void writeStocksToDisk(String file, TreeMap<String,Stock> data) throws IOException{
+    private void writeStocksToDisk(String file, TreeMap<String,Stock> data) throws IOException{
         JSONArray ja = new JSONArray();
         JSONObject jo;
         Stock stock;
@@ -176,11 +179,11 @@ public class Data
             jo.put("type", stock.type);
             ja.put(jo);
         }
-        fw = new FileWriter(System.getProperty("user.dir")+"/data/" + file);
+        fw = new FileWriter(USERDIR+"/data/" + file);
         fw.write(ja.toString());
         fw.close();
     } 
-    public TreeMap<String,Stock> dataRead(String file) throws IOException{
+    private TreeMap<String,Stock> dataRead(String file) throws IOException{
         JSONArray ja = new JSONArray(new JSONTokener(new BufferedReader(new FileReader(System.getProperty("user.dir")+"/data/"+file))));
         JSONObject jo = new JSONObject();
         TreeMap<String,Stock> stocks = new TreeMap<>();   
@@ -193,12 +196,21 @@ public class Data
         }
         return stocks;   
     }
-    public JSONArray dataReadJson(String file) throws IOException{
+    public JSONArray readJSON(String file) throws IOException{
         JSONArray ja = new JSONArray(new JSONTokener(new BufferedReader(new FileReader(System.getProperty("user.dir")+"/data/"+file))));
         return ja;
     }
-    public static void main( String[] args )
+    public void read(String read, String write) throws IOException{    
+        String[] stocks = Files.readAllLines(Paths.get(USERDIR+"/data/"+read)).toArray(new String[0]);
+        TreeMap<String,Stock> container = new TreeMap<String,Stock>();
+        for(int j = 0; j < stocks.length; j++){
+            container.put(stocks[j], nasdaq.get(stocks[j]));
+        }
+        writeStocksToDisk(write, container);
+    }
+    public static void main( String[] args ) throws IOException
     {
         Data data = new Data(false);
+        //data.read("largecap", "largeCap.json");
     }
 }
