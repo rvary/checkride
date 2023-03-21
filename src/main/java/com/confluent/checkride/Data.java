@@ -20,27 +20,8 @@ public class Data
     public TreeMap<String,Stock> nasdaq, midLargeCap;
     public Stack<String> stocks, copy;
     public ArrayList<String> names;
-    
-    class Stock{
-        String symbol;
-        String companyName;
-        Double price;
-        String type;
-        public Stock(String s, String cName, String t){
-            symbol = s;
-            companyName = cName;
-            type = t;
-        }
-        public Stock(String s, String cName, Double p, String t){
-            symbol = s;
-            companyName = cName;
-            price = p;
-            type = t;
-        }
-        public void setPrice(Double p){
-            price = p;
-        }
-    }
+
+    public Data(){}
     public Data(boolean update) {
         nasdaq = new TreeMap<>();
         midLargeCap = new TreeMap<>();
@@ -208,6 +189,7 @@ public class Data
         }
         writeStocksToDisk(write, container);
     }
+
     public static void main( String[] args ) throws IOException
     {
         Data data = new Data(false);

@@ -1,0 +1,7 @@
+bootstrap.servers=kafka:9092
+key.serializer=org.apache.kafka.common.serialization.StringSerializer
+value.serializer=org.apache.kafka.common.serialization.StringSerializer
+client.id=brokerproducer
+compression.type=none
+acks=1
+linger.ms=5

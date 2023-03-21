@@ -11,15 +11,15 @@ import org.json.*;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
-public class Producer {
-    final String TOPIC = "transactions";
+public class Transactions {
+    final String TOPIC = "transaction_requests";
     final String USERDIR = System.getProperty("user.dir");
-    final int TRANSACTION_CAP = 1000;
+    final int TRANSACTION_CAP = 100;
     Data data;
     JSONArray ja;
     Properties properties;
     KafkaProducer<String,String> producer; 
-    public Producer() throws IOException{
+    public Transactions() throws IOException{
         data = new Data(false);
         ja = data.readJSON("largecap.json");
         properties = new Properties();
@@ -35,52 +35,46 @@ public class Producer {
                     }
                 ));
     }
-    private void produceTransactions() throws InterruptedException, ExecutionException{
+    private Double getRandomNumber(Double min, Double max){
+        return (Double)(Math.random()*(max-min) + min);
+    }
+    protected void produceTransactions() throws InterruptedException, ExecutionException{
         int nInd, sInd, shares;
-        Double value;
+        Double value, basisOffset;
         String transactionType;
         BigDecimal bd;
-        DecimalFormat df = new DecimalFormat("#.##");;
+        DecimalFormat df = new DecimalFormat("#.##");
         JSONObject jo;
-        for(int j = 0; j < 10; j++){
+        for(int j = 0; j < 1; j++){
             nInd = (int)(Math.random()*(data.names.size()-1));
-            sInd = (int)(Math.random()*(ja.length()-1));
-            shares = (int)(Math.random()*(TRANSACTION_CAP));
+            //sInd = (int)(Math.random()*(ja.length()-1));
+            sInd = 0;
+            //shares = (int)(Math.random()*(TRANSACTION_CAP));
+            shares = 1;
             transactionType = ((int)(Math.random()*(2)) == 1) ? "BUY" : "SELL"; 
-            
+            basisOffset = j > 2500 ? getRandomNumber(0.8,1.2) : 1.0;
             jo = (JSONObject)ja.get(sInd);
-            bd = (BigDecimal)jo.get("price");
+            bd = new BigDecimal(jo.getDouble("price")*basisOffset);
             value =  shares*bd.doubleValue();
             
-            jo.put("name", data.names.get(nInd));
-            jo.put("shares:", shares);
-            jo.put("value", df.format(value));
-            jo.put("transaction:", transactionType);
-            //System.out.println(jo);
-
-            ProducerRecord<String,String> record = new ProducerRecord<String,String>(TOPIC,jo.getString("symbol"),jo.toString());
-            System.out.println("SENDING RECORD!!");
-            //producer.send(record).get();
-            
-            producer.send(record, (md, e) ->{
-                if(e != null){
-                    e.printStackTrace();
-                }
-                else{
-                    System.out.printf("KEY: %s, VALUE: %s, Topic: %s, Partition: %s, Offset: %s\n", record.key(), record.value(), 
-                        md.topic(), md.partition(), md.offset());
-                }
-            });      
-
+            //jo.put("name", data.names.get(nInd));
+            jo.put("name","Alexander Parsons");
+            //jo.put("shares", shares);
+            jo.put("shares", 1);
+            jo.put("transactionValue", df.format(value));
+            jo.put("transactionType", transactionType);
+            System.out.println(jo);
+              
+            ProducerRecord<String,String> record = new ProducerRecord<String,String>(TOPIC,jo.getString("name"),jo.toString());
+            producer.send(record);     
         }
     }
     public static void main(String[] args) throws IOException{
-    
-        Producer producer = new Producer();
+        Transactions transactions = new Transactions();
         final CountDownLatch latch = new CountDownLatch(1);
         try{
-            producer.setupShutdownHook(latch);
-            producer.produceTransactions();
+            transactions.setupShutdownHook(latch);
+            transactions.produceTransactions();
             latch.await();
         
         }catch(Exception e){
