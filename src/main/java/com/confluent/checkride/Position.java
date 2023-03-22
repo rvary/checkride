@@ -47,12 +47,10 @@ public class Position {
     public boolean canSell(int numShares){
         return (numShares <= shares) ? true : false;   
     }
-    public void sell(int numShares, Double transactionValue){
+    public void sell(int numShares){
         shares-=numShares;
-        positionValue-=transactionValue;
     }
-    public void buy(int numShares, Double transactionValue){
+    public void buy(int numShares){
         shares += numShares;
-        positionValue+=transactionValue;
     }
 }

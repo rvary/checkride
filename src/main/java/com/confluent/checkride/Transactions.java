@@ -38,8 +38,15 @@ public class Transactions {
     private Double getRandomNumber(Double min, Double max){
         return (Double)(Math.random()*(max-min) + min);
     }
-    protected void produceTransactions() throws InterruptedException, ExecutionException{
-        int nInd, sInd, shares;
+    protected void test(int numShares, String transactionType, Double price){
+        try{
+            produceTransactions(numShares, transactionType, price);
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+    protected void produceTransactions(int numShares, String type, Double price) throws InterruptedException, ExecutionException{
+        int nInd, sInd, shares=numShares;
         Double value, basisOffset;
         String transactionType;
         BigDecimal bd;
@@ -50,17 +57,19 @@ public class Transactions {
             //sInd = (int)(Math.random()*(ja.length()-1));
             sInd = 0;
             //shares = (int)(Math.random()*(TRANSACTION_CAP));
-            shares = 1;
-            transactionType = ((int)(Math.random()*(2)) == 1) ? "BUY" : "SELL"; 
+            //transactionType = ((int)(Math.random()*(2)) == 1) ? "BUY" : "SELL"; 
+            transactionType = type;
             basisOffset = j > 2500 ? getRandomNumber(0.8,1.2) : 1.0;
             jo = (JSONObject)ja.get(sInd);
+            jo.remove("price");
+            jo.put("price", price.toString());
             bd = new BigDecimal(jo.getDouble("price")*basisOffset);
             value =  shares*bd.doubleValue();
             
             //jo.put("name", data.names.get(nInd));
             jo.put("name","Alexander Parsons");
             //jo.put("shares", shares);
-            jo.put("shares", 1);
+            jo.put("shares", shares);
             jo.put("transactionValue", df.format(value));
             jo.put("transactionType", transactionType);
             System.out.println(jo);

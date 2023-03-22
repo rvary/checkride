@@ -9,12 +9,14 @@ public class Account {
     private String holder;
     private Double cash;
     private Double accountValue;
+    private Double accountGain;
     private TreeMap<String,Position> positions;
     public Account(){}
     public Account(String name){
         holder = name;
-        accountValue = 0.0;
         cash = 0.0;
+        accountValue = 0.0;
+        accountGain = 0.0;
         positions = new TreeMap<String,Position>();
     }
     public void setId(ObjectId id){
@@ -41,17 +43,17 @@ public class Account {
     public Double getAccountValue(){
         return accountValue;
     }
+    public void setAccountGain(Double gain){
+        accountGain = gain;
+    }
+    public Double getAccountGain(){
+        return accountGain;
+    }
     public void setPositions(TreeMap<String,Position> positions){
         this.positions = positions;
     }
     public TreeMap<String,Position> getPositions(){
         return positions;
-    }
-    public void credit(Double credit){
-        cash+=credit;
-    }
-    public void debit(Double withdrawal){
-        cash-=withdrawal;
     }
     public void addPosition(String stock, Position position){
         positions.put(stock, position);

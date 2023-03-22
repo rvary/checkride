@@ -9,7 +9,6 @@ import org.apache.kafka.streams.kstream.Produced;
 import org.apache.kafka.streams.kstream.ValueJoiner;
 import org.apache.kafka.streams.kstream.ValueMapper;
 import org.apache.kafka.streams.kstream.ValueMapperWithKey;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.apache.kafka.streams.Topology;
 
@@ -35,7 +34,8 @@ public class DataFabric {
         KStream<String,String> validatedTransactions, invalidatedTransactions;
         KTable<String,String> brokerageAccounts;
         KTable<String, Long> validTransactionCnt, invalidTransactionCnt;
-        Produced<String,Long> produced = Produced.with(Serdes.String(),Serdes.Long());
+        Produced<String,Long> p1 = Produced.with(Serdes.String(),Serdes.Long());
+        Produced<String,Long> p2 = Produced.with(Serdes.String(),Serdes.Long());
    
         requestedTransactions = builder.stream("transaction_requests");   
         
@@ -62,7 +62,6 @@ public class DataFabric {
                 return transactionRequest.toString();
             }
         });
-       // enrichedTransactionRequest.to("enrichedTransactionRequests");
          
         validatedTransactions = enrichedTransactionRequest.filter(new Predicate<String,String>(){
             @Override
@@ -91,8 +90,8 @@ public class DataFabric {
         });
         validatedTransactions.to("validated_transaction_requests");
         validTransactionCnt = processedTransactions.groupByKey().count();
-        validTransactionCnt.toStream().to("account_holders_validated_transactions", produced);
-        
+        validTransactionCnt.toStream().to("account_holders_validated_transactions", p1);
+        /*
         invalidatedTransactions = enrichedTransactionRequest.filter(new Predicate<String,String>(){
             @Override
             public boolean test(String key, String value){
@@ -133,9 +132,9 @@ public class DataFabric {
            }
         });
         invalidTransactionCnt = invalidatedTransactions.groupByKey().count();
-        invalidTransactionCnt.toStream().to("account_holders_invalidated_transactions", produced);
-        //invalidatedTransactions.to("invalidated_transaction_requests");
-        
+        invalidTransactionCnt.toStream().to("account_holders_invalidated_transactions", p2);
+        invalidatedTransactions.to("invalidated_transaction_requests");
+        */
         dag = builder.build();
         System.out.println(dag.describe().toString());
         return dag;

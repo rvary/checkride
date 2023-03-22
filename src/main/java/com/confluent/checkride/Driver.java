@@ -32,25 +32,25 @@ public class Driver {
         Transactions transaction;
         Brokerage brokerage;
         BufferedReader br;
-        String in;
+        String[] in;
         System.out.println("**START BROKERAGE and DATA FABRIC BEFORE TRIGGERING TRANSACTION**");
         try{
             transaction = new Transactions();
             brokerage = new Brokerage();
             br = new BufferedReader(new InputStreamReader(System.in));   
             while(true){
-                in = br.readLine();
-                if(in.compareTo("p") == 0){
-                    System.out.println("producing transaction");
-                    transaction.produceTransactions();
+                in = br.readLine().split(",");;
+                if(in[0].compareTo("b") == 0){
+                    System.out.println("buy");
+                    transaction.test(Integer.parseInt(in[1]),"BUY",Double.parseDouble(in[2]));
                 }
-                else if(in.compareTo("a") == 0){
+                else if(in[0].compareTo("a") == 0){
                     System.out.println("generating account");
                     brokerage.createAccounts();
                 }
-                else if(in.compareTo("j") == 0){
-                    System.out.println("processing transaction");
-                    brokerage.processTransactions();
+                else if(in[0].compareTo("s") == 0){
+                    System.out.println("sell");
+                    transaction.test(Integer.parseInt(in[1]),"SELL",Double.parseDouble(in[2]));
                 }
             }
         }catch(final Throwable e){
