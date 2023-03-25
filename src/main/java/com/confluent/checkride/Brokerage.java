@@ -31,27 +31,42 @@ import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 import java.util.Properties;
 
 public class Brokerage {
-    final static String USERDIR = System.getProperty("user.dir");
+    final static String USERDIR = System.getProperty("user.dir") + "/configs/";
     private MongoClient mongo;
     private MongoDatabase db;
     private MongoCollection<Account> accounts;
     private TreeMap<String,ObjectId> map;
-    private KafkaConsumer<String,String> consumer;
-    private KafkaProducer<String,String> producer;
-    //private Transactions transactions;
-    
+    private KafkaConsumer<String,String> consumer, request;
+    private KafkaProducer<String,String> producer, requestProducer;
+    ConsumerRecords<String,String> requestRecords, validatedRequestRecords;
+   
     public Brokerage() throws IOException, FileNotFoundException{
         configureStorage();
+        
         map = new TreeMap<String, ObjectId>();
         
-        Properties cprops = new Properties();;
-        cprops.load(new FileInputStream(USERDIR+"/configs/consumerConfig"));
-        consumer = new KafkaConsumer<String,String>(cprops);
-        consumer.subscribe(Arrays.asList("validated_transaction_requests"));
+        Properties c1Properties, c2Properties, pProperties;
+
+        c1Properties = new Properties();;
+        c1Properties.load(new FileInputStream(USERDIR+"brokerConsumer1Config"));
+        consumer = new KafkaConsumer<String,String>(c1Properties);
+        consumer.subscribe(Arrays.asList("validated_transaction_request","invalidated_transaction_request"));
         
-        Properties pprops = new Properties();
-        pprops.load(new FileInputStream(USERDIR+"/configs/brokerProducerConfig"));
-        producer = new KafkaProducer<String,String>(pprops);
+        c2Properties = new Properties();
+        c2Properties.load(new FileInputStream(USERDIR+"brokerConsumer2Config"));
+        request = new KafkaConsumer<String,String>(c2Properties);
+        request.subscribe(Arrays.asList("transaction_request"));
+
+        pProperties = new Properties();
+        pProperties.load(new FileInputStream(USERDIR+"brokerProducerConfig"));
+        producer = new KafkaProducer<String,String>(pProperties);
+        requestProducer = new KafkaProducer<String,String>(pProperties);
+    }
+    private void run(){
+        while(true){
+            processRequest();
+            processTransactions();
+        }
     }
     private void setupShutdownHook(CountDownLatch latch){
         Runtime.getRuntime()
@@ -72,34 +87,66 @@ public class Brokerage {
         db = mongo.getDatabase("brokerage").withCodecRegistry(pojoCodecRegistry);
         accounts = db.getCollection("accounts",Account.class);
     }
-    public void createAccounts() throws IOException{
+    private void createAccounts() throws IOException{
         //String[] names = Files.readAllLines(Paths.get(Brokerage.USERDIR + "/data/names.csv")).toArray(new String[0]);
         //for(String name : names){
         String name = "Alexander Parsons";
         Account a = new Account(name);
-        a.setCash(Math.random()*25000.0 + 10000.0);
+        a.setCash(30000.22);
+        //a.setCash(Math.random()*25000.0 + 10000.0);
         a.setAccountValue(a.getCash());
         accounts.insertOne(a);
         System.out.println(a.getId());
         map.put(name, a.getId());
-        JSONObject jo = new JSONObject(a);
-        System.out.println(jo.toString());
-        ProducerRecord<String,String> record = new ProducerRecord<String,String>("processed_transactions", name, new JSONObject(a).toString());
-        producer.send(record);
      //   }
     }
-    protected void processTransactions(){
+    private void processRequest(){
         ConsumerRecords<String,String> records;
+        ConsumerRecord<String,String> record;
+        Account acct;
+        JSONObject jo, account;
+        String holder;
+
+        do{
+            records = request.poll(Duration.ofMillis(1)); 
+        }while(records.count() == 0); 
+ 
+        record = records.iterator().next();
+        
+        jo = new JSONObject(record.value());
+        holder = jo.getString("name");
+        
+        acct = accounts.find(eq("_id",map.get(holder))).cursor().next();
+        account = new JSONObject(acct);
+        
+        jo.put("account", account);
+        
+        ProducerRecord<String,String> enrichedRequest = new ProducerRecord<String,String>("enriched_transaction_request", holder, jo.toString());
+        requestProducer.send(enrichedRequest);
+    }
+    private void processTransactions(){
         JSONObject jo;
-        while(true){
-            records = consumer.poll(Duration.ofMillis(100));
-            for(ConsumerRecord<String,String> record : records){
-                jo = new JSONObject(record.value());
-                if(jo.getString("transactionType").compareTo("BUY") == 0){
-                    purchase(jo);
-                }
-                else sell(jo);
-            }
+        ConsumerRecords<String,String> records;
+        ConsumerRecord<String,String> record;
+
+        do{
+            records = consumer.poll(Duration.ofMillis(1));
+        }while(records.count() == 0);
+
+        record = records.iterator().next();
+        
+        if(record.topic().compareTo("invalidated_transaction_request") == 0) return;
+
+        jo = new JSONObject(record.value());
+  
+        if(jo.getString("transactionType").compareTo("BUY") == 0){
+            System.out.println("PURCHASE");
+            purchase(jo);
+        }
+        else 
+        {
+            System.out.println("SALE");
+            sell(jo);
         }
     }
     private void purchase(JSONObject transactionDetails){
@@ -141,7 +188,7 @@ public class Brokerage {
             
             //debit the accout and reset the account's gain and value
             acct.setCash(acct.getCash() - transactionValue);
-            //acct.setAccountGain(acct.getAccountGain() + p.getGain());
+            acct.setAccountGain(acct.getAccountGain() + p.getGain());
             acct.setAccountValue(acct.getAccountValue() - transactionValue + p.getPositionValue());
             
             //update the mongo document
@@ -158,7 +205,7 @@ public class Brokerage {
             acct.setAccountValue(acct.getAccountValue() - transactionValue + p.getPositionValue());
             accounts.findOneAndReplace(eq("_id", map.get(acctHolder)),acct);
         }
-        record = new ProducerRecord<String,String>("processed_transactions", acctHolder, new JSONObject(acct).toString());
+        record = new ProducerRecord<String,String>("processed_transaction", acctHolder, new JSONObject(acct).toString());
         producer.send(record);
     }
     private void sell(JSONObject transactionDetails){
@@ -181,7 +228,7 @@ public class Brokerage {
         positionGain = (p.getStock().getPrice()-p.getCostBasis())*p.getShares();
 
         //To update account gain/value correctly, remove position's gain and value before the transaction occurs
-        
+        acct.setAccountGain(acct.getAccountGain() - p.getGain());
         acct.setAccountValue(acct.getAccountValue() - p.getPositionValue());
 
         p.setGain(positionGain);
@@ -193,10 +240,10 @@ public class Brokerage {
         }
 
         acct.setCash(acct.getCash() + transactionValue);
-        acct.setAccountGain(acct.getAccountGain() + transactionGainLoss);
+        acct.setAccountGain(acct.getAccountGain() + transactionGainLoss + p.getGain());
         acct.setAccountValue(acct.getAccountValue() + transactionValue + p.getPositionValue());
         accounts.findOneAndReplace(eq("_id", map.get(acctHolder)), acct);
-        record = new ProducerRecord<String,String>("processed_transactions", acctHolder, new JSONObject(acct).toString());
+        record = new ProducerRecord<String,String>("processed_transaction", acctHolder, new JSONObject(acct).toString());
         producer.send(record);
     }
 
@@ -208,7 +255,7 @@ public class Brokerage {
             //brokerage.transactions.produceTransactions();
             CountDownLatch latch = new CountDownLatch(2);
             brokerage.setupShutdownHook(latch);
-            brokerage.processTransactions();
+            brokerage.run();
             latch.await();     
             brokerage.accounts.drop();
         }catch(final Throwable e){
@@ -217,5 +264,5 @@ public class Brokerage {
             e.getCause();
         }
         System.exit(0);
-    }    
+    }
 }

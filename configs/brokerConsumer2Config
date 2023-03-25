@@ -2,5 +2,6 @@ bootstrap.servers=kafka:9092
 key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
 value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
 auto.offset.reset=earliest
-group.id=1
+group.id=2
 client.id=transactionconsumer1
+max.poll.records=1

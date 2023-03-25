@@ -58,14 +58,4 @@ public class Account {
     public void addPosition(String stock, Position position){
         positions.put(stock, position);
     }
-    public void getAccountDetails(){
-        System.out.printf("Acct: %s\n", getHolder());
-        System.out.printf("Acct Value: %f\n", getAccountValue());
-        for(Entry<String, Position> position : positions.entrySet()){
-            Position p = position.getValue();
-            Stock stock = position.getValue().getStock();
-            System.out.printf("Stock: %s, Shares: %d, Share Price: $%f, Position Value: $%f", 
-                stock.getSymbol(), p.getShares(), stock.getPrice(), p.getValue());
-        } 
-    }
 }

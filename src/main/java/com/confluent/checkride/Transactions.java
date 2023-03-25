@@ -12,7 +12,7 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 public class Transactions {
-    final String TOPIC = "transaction_requests";
+    final String TOPIC = "transaction_request";
     final String USERDIR = System.getProperty("user.dir");
     final int TRANSACTION_CAP = 100;
     Data data;
@@ -40,35 +40,34 @@ public class Transactions {
     }
     protected void test(int numShares, String transactionType, Double price){
         try{
-            produceTransactions(numShares, transactionType, price);
+            //produceTransactions(numShares, transactionType, price);
         }catch(Exception e){
             e.printStackTrace();
         }
     }
-    protected void produceTransactions(int numShares, String type, Double price) throws InterruptedException, ExecutionException{
-        int nInd, sInd, shares=numShares;
+    protected void produceTransactions() throws InterruptedException, ExecutionException{
+        int nInd, sInd, shares;
         Double value, basisOffset;
         String transactionType;
         BigDecimal bd;
         DecimalFormat df = new DecimalFormat("#.##");
         JSONObject jo;
-        for(int j = 0; j < 1; j++){
+        for(int j = 0; j < 50; j++){
             nInd = (int)(Math.random()*(data.names.size()-1));
             //sInd = (int)(Math.random()*(ja.length()-1));
             sInd = 0;
-            //shares = (int)(Math.random()*(TRANSACTION_CAP));
-            //transactionType = ((int)(Math.random()*(2)) == 1) ? "BUY" : "SELL"; 
-            transactionType = type;
-            basisOffset = j > 2500 ? getRandomNumber(0.8,1.2) : 1.0;
+            shares = (int)(Math.random()*(TRANSACTION_CAP));
+            transactionType = ((int)(Math.random()*(2)) == 1) ? "BUY" : "SELL"; 
+            //transactionType = type;
+            basisOffset = j > 1 ? getRandomNumber(0.8,1.2) : 1.0;
             jo = (JSONObject)ja.get(sInd);
-            jo.remove("price");
-            jo.put("price", price.toString());
+            //jo.remove("price");
+            //jo.put("price", price.toString());
             bd = new BigDecimal(jo.getDouble("price")*basisOffset);
             value =  shares*bd.doubleValue();
             
             //jo.put("name", data.names.get(nInd));
             jo.put("name","Alexander Parsons");
-            //jo.put("shares", shares);
             jo.put("shares", shares);
             jo.put("transactionValue", df.format(value));
             jo.put("transactionType", transactionType);
