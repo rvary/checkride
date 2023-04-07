@@ -1,6 +1,8 @@
-application.id=streams-application
+application.id=brokerage-streams-application
 bootstrap.servers=kafka:9092
 zookeeper.connect=zookeeper:2181
 default.value.serde=org.apache.kafka.common.serialization.Serdes$StringSerde
 default.key.serde=org.apache.kafka.common.serialization.Serdes$StringSerde
-num.stream.threads=3
+cache.max.bytes.buffering=0
+poll.ms=5
+num.stream.threads=1

@@ -1,0 +1,50 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Current File",
+            "request": "launch",
+            "mainClass": "${file}"
+        },
+        {
+            "type": "java",
+            "name": "Brokerage",
+            "request": "launch",
+            "mainClass": "com.confluent.checkride.Brokerage",
+            "projectName": "checkride-app"
+        },
+        {
+            "type": "java",
+            "name": "Data",
+            "request": "launch",
+            "mainClass": "com.confluent.checkride.Data",
+            "projectName": "checkride-app"
+        },
+        {
+            "type": "java",
+            "name": "Fabric",
+            "request": "launch",
+            "mainClass": "com.confluent.checkride.Fabric",
+            "projectName": "checkride-app"
+        },
+        {
+            "type": "java",
+            "name": "Test",
+            "request": "launch",
+            "mainClass": "com.confluent.checkride.Test",
+            "projectName": "checkride-app",
+            "vmArgs": "-enableassertions"
+        },
+        {
+            "type": "java",
+            "name": "Transactions",
+            "request": "launch",
+            "mainClass": "com.confluent.checkride.Transactions",
+            "projectName": "checkride-app"
+        }
+    ]
+}

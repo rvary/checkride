@@ -1,128 +1,195 @@
 package com.confluent.checkride;
+
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.Initializer;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
-import org.apache.kafka.streams.kstream.Predicate;
+import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.Produced;
-import org.apache.kafka.streams.kstream.ValueJoiner;
-import org.apache.kafka.streams.kstream.ValueMapperWithKey;
-import org.json.JSONObject;
+import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.Aggregator;
 
-import java.util.Iterator;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.time.Duration;
+
+import org.json.JSONObject;
 
 public class Fabric {
-    final String USERDIR = System.getProperty("user.dir") + "/configs/";
     private KafkaStreams stream;
 
     public Fabric() throws IOException{
         Properties props = new Properties();
-        props.load(new FileInputStream(USERDIR + "brokerStreamConfig"));
+        props.load(new FileInputStream(System.getProperty("user.dir") + "/configs/brokerageStream"));
         stream = new KafkaStreams(getTopology(), props);
+        stream.cleanUp();
     }
     private Topology getTopology(){
         Topology dag;
         StreamsBuilder builder = new StreamsBuilder();
-        KStream<String,String> processed, enriched, validated, invalidated;
+        KStream<String,String> processed, validated, invalidated, stockVolume;
+        KStream<String,Long> invalidatedCount;
         KTable<String,String> brokerageAccounts;
-        KTable<String, Long> validatedCnt, invalidatedCnt;
-        Produced<String,Long> p1 = Produced.with(Serdes.String(),Serdes.Long());
-        Produced<String,Long> p2 = Produced.with(Serdes.String(),Serdes.Long());
-           
-        processed = builder.stream("processed_transaction"); 
-        
-        processed.mapValues(v -> {
-            JSONObject jo = new JSONObject();
-            JSONObject record = new JSONObject(v);
-            String holder = record.getString("holder");
-            jo.put("account:", holder);
-            jo.put("accountValue", record.getBigDecimal("accountValue").toString());
-            return jo.toString();
-        }).to("brokerage_account_values");
+        KTable<String,Long> validatedCount;
+
+        processed = builder.stream("processed_transaction");
 
         brokerageAccounts = processed.toTable();
-        brokerageAccounts.toStream().to("brokerage_accounts");
+        brokerageAccounts
+            .toStream()
+            .to("brokerage_accounts"); 
+            
+        validated = builder.stream("validated_transaction_request");
         
-        enriched = builder.stream("enriched_transaction_request");
+        stockVolume = validated
+            .map((holder, record) -> {
+                JSONObject transaction = new JSONObject(record);
+                JSONObject mapped = new JSONObject();
+                String stock;
 
-        validated = enriched.filter(new Predicate<String,String>(){
-            @Override
-            public boolean test(String key, String value){
-                JSONObject request = new JSONObject(value);
-                JSONObject acct = new JSONObject(request.get("account").toString());
-                if(request.getString("transactionType").compareTo("BUY") == 0){
-                    return acct.getDouble("cash") >= request.getDouble("transactionValue") ? true : false;
+                stock = transaction.getString("symbol");
+                mapped.put("shares",transaction.getInt("shares"));
+                mapped.put("price",transaction.getDouble("price"));
+                mapped.put("transactionValue", transaction.getDouble("transactionValue"));
+                mapped.put("transactionType", transaction.getString("transactionType"));
+
+                return new KeyValue<String,String>(stock, mapped.toString()); 
+            });
+
+        stockVolume
+            .groupByKey()
+            .aggregate(new Initializer<String>(){
+                @Override
+                public String apply(){
+                    JSONObject stockVolume = new JSONObject();
+                    stockVolume.put("stock", "");
+                    stockVolume.put("shareVolume", 0);
+                    stockVolume.put("value", 0.0);
+                    stockVolume.put("purchases", 0);
+                    stockVolume.put("avgPrice", 0.0);
+                    stockVolume.put("sales", 0);
+                    return stockVolume.toString();
                 }
-                else{
-                    JSONObject position, stock;
-                    JSONObject positions = new JSONObject(acct.get("positions").toString());
-                    Iterator<String> stocks = positions.keys();
-                    String symbol;
-                    while(stocks.hasNext()){
-                        symbol = stocks.next();
-                        position = new JSONObject(positions.get(symbol).toString());
-                        stock = new JSONObject(position.get("stock").toString());
-                        if(stock.getString("symbol").compareTo(symbol) == 0){
-                            return position.getInt("shares") >= request.getInt("shares") ? true : false;
-                        }
+            }, new Aggregator<String, String, String>() {
+                JSONObject a, agg;
+                Double transactionValue, aggregatePrice, avg;
+                int transactionShares, volume; 
+                @Override
+                public String apply(String stock, String transaction, String aggregate){
+                    a = new JSONObject(transaction);
+                    agg = new JSONObject(aggregate);
+                    
+                    transactionValue = a.getDouble("transactionValue");
+                    transactionShares = a.getInt("shares");
+                    volume = agg.getInt("shareVolume");
+                    aggregatePrice = agg.getDouble("avgPrice");
+                    
+                    avg = (transactionValue + aggregatePrice*volume)/(transactionShares + volume);
+                    
+                    agg.remove("shareVolume");
+                    agg.remove("value");
+                    agg.remove("avgPrice");
+                    agg.remove("stock");
+                    agg.put("shareVolume", (transactionShares + volume));
+                    agg.put("value", (transactionValue + aggregatePrice*volume));
+                    agg.put("avgPrice", avg);
+                    agg.put("stock", stock);
+                    
+                    if(a.getString("transactionType").compareTo("BUY") == 0){
+                        int buy = agg.getInt("purchases");
+                        agg.remove("purchases");
+                        agg.put("purchases",++buy);
                     }
-                    return false;
-                }
-            }
-        });
-        validated.to("validated_transaction_request");
-        validatedCnt = validated.groupByKey().count();
-        validatedCnt.toStream().to("account_holders_validated_transactions", p1);
-        
-        invalidated = enriched.filter(new Predicate<String,String>(){
-            @Override
-            public boolean test(String key, String value){
-                JSONObject request = new JSONObject(value);
-                JSONObject acct = new JSONObject(request.get("account").toString());
-                if(request.getString("transactionType").compareTo("BUY") == 0){
-                    return request.getDouble("transactionValue") > acct.getDouble("cash") ? true : false;
-                }
-                else{
-                    JSONObject position, stock; 
-                    JSONObject positions = new JSONObject(acct.get("positions").toString());
-                    Iterator<String> stocks = positions.keys();
-                    String symbol;
-                    while(stocks.hasNext()){
-                        symbol = stocks.next();
-                        position = new JSONObject(positions.get(symbol).toString());
-                        stock = new JSONObject(position.get("stock").toString());
-                        if(stock.getString("symbol").compareTo(symbol) == 0){
-                            return position.getInt("shares") < request.getInt("shares") ? true : false;
-                        }
+                    else{
+                        int sales = agg.getInt("sales");
+                        agg.remove("sales");
+                        agg.put("sales",++sales);
                     }
-                    return true;
+                    
+                    return agg.toString();
                 }
-            }
-        })
-        .mapValues(new ValueMapperWithKey<String,String,String>() {
-           @Override
-           public String apply(String acctName, String transaction){
-                JSONObject message = new JSONObject(transaction);
-                if(message.getString("transactionType").compareTo("BUY") == 0){
-                    message.put("message", "Insufficient Funds");
+            },Materialized.with(Serdes.String(), Serdes.String()))
+            .toStream()
+            .to("stock_volume");
+
+        stockVolume
+            .groupByKey()
+            .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofSeconds(5)))
+            .aggregate(new Initializer<String>(){
+                @Override
+                public String apply(){
+                    JSONObject stockVolume = new JSONObject();
+                    stockVolume.put("stock", "");
+                    stockVolume.put("shareVolume", 0);
+                    stockVolume.put("avgPrice", 0.0);
+                    return stockVolume.toString();
                 }
-                else{
-                    message.put("message", "Account doesn't hold " + message.getInt("shares") + 
-                        " shares of " + message.getString("symbol"));
+            }, new Aggregator<String, String, String>() {
+                JSONObject a, agg;
+                Double avg, aggregatePrice, transactionValue;
+                int transactionShares, volume; 
+
+                @Override
+                public String apply(String stock, String transaction, String aggregate){
+                    a = new JSONObject(transaction);
+                    agg = new JSONObject(aggregate);
+                    
+                    transactionValue = a.getDouble("transactionValue");
+                    transactionShares = a.getInt("shares");
+                    volume = agg.getInt("shareVolume");
+                    aggregatePrice = agg.getDouble("avgPrice");
+                    
+                    avg = (transactionValue + aggregatePrice*volume)/(transactionShares + volume);
+            
+                    agg.put("shareVolume", transactionShares+volume);
+                    agg.put("avgPrice", avg);
+                    agg.put("stock", stock);
+                    
+                    return agg.toString();
                 }
-                return message.toString();   
-           }
-        });
-        invalidatedCnt = invalidated.groupByKey().count();
-        invalidatedCnt.toStream().to("account_holders_invalidated_transactions", p2);
-        invalidated.to("invalidated_transaction_request");
+            },Materialized.with(Serdes.String(), Serdes.String()))
+            .toStream()
+            .to("stock_window");
         
+        validatedCount = validated
+            .groupByKey()
+            .count();
+
+        validated
+            .groupBy((key,value) -> "validCount")
+            .count()
+            .toStream()
+            .to("validated_requests_cnt", Produced.with(Serdes.String(), Serdes.Long()));
+
+        invalidated = builder.stream("invalidated_transaction_request");        
+        invalidated
+            .groupBy((key,value) -> "invalidCount")
+            .count()
+            .toStream()
+            .to("invalidated_requests_cnt", Produced.with(Serdes.String(), Serdes.Long()));
+
+        invalidatedCount = invalidated
+            .groupByKey()
+            .count()
+            .toStream(); 
+        
+        invalidatedCount.join(validatedCount,
+            (invalidcnt, validcnt) -> {
+                Double ratio, valid = (double)validcnt, invalid = (double)invalidcnt;
+                ratio =  valid/(valid+invalid);
+                JSONObject agg = new JSONObject();
+                agg.put("invalid", invalidcnt);
+                agg.put("valid", validcnt);
+                agg.put("ratio", ratio);
+                return agg.toString();
+            }).to("transaction_ratios");
+
         dag = builder.build();
         System.out.println(dag.describe().toString());
         return dag;
@@ -144,6 +211,7 @@ public class Fabric {
             fabric.addShutdownHook(latch);
             fabric.stream.start();
             latch.await();
+            fabric.stream.cleanUp();
         }
         catch(Throwable e){
             e.printStackTrace();

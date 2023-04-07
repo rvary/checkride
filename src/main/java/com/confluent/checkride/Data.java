@@ -8,13 +8,15 @@ import java.util.*;
 
 import org.json.*;
 
+import com.mongodb.lang.Nullable;
+
 public class Data 
 {
     private String APIKEY = "";
     private final String HOST = "twelve-data1.p.rapidapi.com";
     private final String USERDIR = System.getProperty("user.dir");
     private int APITHROTTLING = 0, RETURNS = 0, APICOUNT = 0;
-    private boolean LOG = true;
+    private boolean LOG = false;
     private FileWriter fw;
     
     public TreeMap<String,Stock> nasdaq, midLargeCap;
@@ -39,10 +41,10 @@ public class Data
                 fw = new FileWriter(new File("log.txt"), false);
             }
             if(update){
-                br = new BufferedReader(new FileReader(USERDIR + "key"));
+                br = new BufferedReader(new FileReader(USERDIR + "keys"));
                 APIKEY = br.readLine();
                 br.close();
-                writeStocksToDisk("stocks.json", getStocks());
+                writeStocksToDisk("stocks.json", getStocks(null));
                 writeStocksToDisk("midLargeCap.json", getMidtoLargeCapStocks());
             }
             {
@@ -53,28 +55,85 @@ public class Data
             System.out.println(e.getMessage());
         }
     }
-    private TreeMap<String,Stock> getStocks() throws InterruptedException, IOException{
-        HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create("https://"+HOST+"/stocks?country=US&exchange=NASDAQ&format=json"))
-        .header("X-RapidAPI-Key", APIKEY)
-        .header("X-RapidAPI-Host", HOST)
-        .method("GET", HttpRequest.BodyPublishers.noBody())
-        .build();
-        if(LOG){
-            fw.write("API CALL: https://"+HOST+"/stocks?country=US&exchange=NASDAQ&format=json\n");
-            fw.flush();
+    public ArrayList<String> getNames(){
+        String data;
+        names = new ArrayList<String>();
+        try{
+            BufferedReader br = new BufferedReader(new FileReader(USERDIR + "/data/names.csv"));
+            while((data = br.readLine()) != null){
+                names.add(data);
+                data = br.readLine();
+            }
+            br.close();
+        }catch(IOException e){
+            e.printStackTrace();
         }
-        HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        JSONObject raw = new JSONObject(response.body());
-        JSONArray data = new JSONArray(raw.getJSONArray("data"));;
-             
-        for(int j = 0; j < data.length(); j++){
-            JSONObject stock = data.getJSONObject(j);
-            stocks.push(stock.getString("symbol"));
-            nasdaq.put(stock.getString("symbol"), (new Stock(stock.getString("symbol"), stock.getString("name"), stock.getString("type"))));
+        return names;
+    }
+    public void readStocks(String file){
+        stocks = new Stack<String>();
+        try{
+            BufferedReader br = new BufferedReader(new FileReader(USERDIR + "/keys"));
+            APIKEY = br.readLine();
+            String[] stocksToRead = Files.readAllLines(Paths.get(USERDIR+"/data/"+file)).toArray(new String[0]);
+            for(String stock : stocksToRead){
+                stocks.push(stock);
+            }
+            br.close();
+        }catch(IOException e){
+            e.printStackTrace();
         }
-        getStockPrices();
-        return nasdaq;
+    }
+    private TreeMap<String,Stock> getStocks(@Nullable Stack<String> stack) throws InterruptedException, IOException{
+        HttpRequest request;
+        JSONObject response, stock;
+        JSONArray data;
+        String sym;
+        Stack<String> copy = new Stack<String>();
+        if(stack != null){
+            TreeMap<String,Stock> nasdaqStocks = new TreeMap<>();
+            while(!stack.empty()){
+                Thread.sleep(1000);
+                sym = stack.pop();
+                System.out.println("GET " + sym);
+                copy.push(sym);
+                request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://twelve-data1.p.rapidapi.com/symbol_search?symbol="+sym+"&outputsize=1"))
+                    .header("X-RapidAPI-Key", APIKEY)
+                    .header("X-RapidAPI-Host", HOST)
+                    .method("GET", HttpRequest.BodyPublishers.noBody())
+                    .build();
+                
+                response = new JSONObject(HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString()).body());
+                data = new JSONArray(response.getJSONArray("data"));
+                stock = (JSONObject)data.get(0);
+                nasdaqStocks.put(sym, new Stock(sym, stock.getString("instrument_name"), stock.getString("instrument_type")));
+            }
+            while(!copy.empty()) stack.push(copy.pop());     
+            return nasdaqStocks;
+        }
+        else{
+            request = HttpRequest.newBuilder()
+                .uri(URI.create("https://"+HOST+"/stocks?country=US&exchange=NASDAQ&format=json"))
+                .header("X-RapidAPI-Key", APIKEY)
+                .header("X-RapidAPI-Host", HOST)
+                .method("GET", HttpRequest.BodyPublishers.noBody())
+                .build();
+            if(LOG){
+                fw.write("API CALL: https://"+HOST+"/stocks?country=US&exchange=NASDAQ&format=json\n");
+                fw.flush();
+            }
+            response = new JSONObject(HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString()).body());
+            data = new JSONArray(response.getJSONArray("data"));;
+                
+            for(int j = 0; j < data.length(); j++){
+                stock = data.getJSONObject(j);
+                stocks.push(stock.getString("symbol"));
+                nasdaq.put(stock.getString("symbol"), (new Stock(stock.getString("symbol"), stock.getString("name"), stock.getString("type"))));
+            }
+            getStockPrices();
+            return nasdaq;
+        }
     }
     private void getStockPrices() throws IOException, InterruptedException {
         String stock;
@@ -82,6 +141,7 @@ public class Data
         JSONObject raw = null;
         while(!stocks.isEmpty()){
             stock = stocks.pop();
+            System.out.println("GET " + stock + " PRICE");
             try{
                 HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://"+HOST+"/price?symbol="+stock+"&format=json&outputsize=30"))
@@ -153,7 +213,7 @@ public class Data
                 jo.put("symbol", stock.symbol);
                 System.out.println(stock.symbol);
             }catch(NullPointerException e){
-                System.out.println("WTF");
+                e.printStackTrace();
             }
             jo.put("companyName", stock.companyName);
             jo.put("price", stock.price);
@@ -192,7 +252,13 @@ public class Data
 
     public static void main( String[] args ) throws IOException
     {
-        Data data = new Data(false);
-        //data.read("largecap", "largeCap.json");
+        Data data = new Data();
+        try{
+            data.nasdaq = data.getStocks(data.stocks);
+            data.getStockPrices();
+            data.writeStocksToDisk("nasdaq.json", data.nasdaq);
+        }catch(InterruptedException e){
+            e.printStackTrace();
+        }
     }
 }
